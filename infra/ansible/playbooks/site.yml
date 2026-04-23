@@ -1,0 +1,7 @@
+- name: Deploy MagicRouter
+  hosts: magicrouter
+  become: true
+  gather_facts: true
+  roles:
+    - role: magicrouter
+      tags: [magicrouter]
