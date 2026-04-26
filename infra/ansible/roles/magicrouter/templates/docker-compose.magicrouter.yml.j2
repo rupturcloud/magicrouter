@@ -1,0 +1,67 @@
+services:
+{% if magicrouter_enable_ollama %}
+  {{ magicrouter_ollama_service_name }}:
+    image: {{ magicrouter_ollama_image }}
+    container_name: {{ magicrouter_ollama_container_name }}
+    restart: unless-stopped
+    ports:
+      - "{{ magicrouter_ollama_bind_host }}:{{ magicrouter_ollama_port }}:{{ magicrouter_ollama_port }}"
+    environment:
+      OLLAMA_HOST: "{{ magicrouter_ollama_host }}:{{ magicrouter_ollama_port }}"
+{% for env_name, env_value in magicrouter_ollama_env.items() %}
+      {{ env_name }}: "{{ env_value }}"
+{% endfor %}
+    volumes:
+      - {{ magicrouter_ollama_data_dir }}:/root/.ollama
+{% endif %}
+{% if magicrouter_enable_gateway %}
+  magicrouter:
+    image: {{ magicrouter_image }}
+    container_name: {{ magicrouter_container_name }}
+    restart: unless-stopped
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "{{ magicrouter_port }}"
+{% if magicrouter_enable_ollama %}
+    depends_on:
+      - {{ magicrouter_ollama_service_name }}
+{% endif %}
+    ports:
+      - "{{ magicrouter_bind_host }}:{{ magicrouter_port }}:{{ magicrouter_port }}"
+    environment:
+      LITELLM_LOG: INFO
+{% for env_name, env_value in magicrouter_extra_env.items() %}
+      {{ env_name }}: "{{ env_value }}"
+{% endfor %}
+    volumes:
+      - {{ magicrouter_config_dir }}/config.yaml:/app/config.yaml:ro
+      - {{ magicrouter_data_dir }}:/app/data
+{% for volume_mount in magicrouter_extra_volume_mounts %}
+      - {{ volume_mount }}
+{% endfor %}
+{% if not magicrouter_enable_ollama %}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+{% endif %}
+{% if magicrouter_publish_via_traefik %}
+    networks:
+      - edge
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "{{ magicrouter_traefik_network }}"
+      traefik.http.routers.magicrouter.rule: Host(`{{ magicrouter_domain }}`)
+      traefik.http.routers.magicrouter.entrypoints: websecure
+      traefik.http.routers.magicrouter.tls: "true"
+      traefik.http.routers.magicrouter.tls.certresolver: letsencrypt
+      traefik.http.services.magicrouter.loadbalancer.server.port: "{{ magicrouter_port }}"
+{% endif %}
+{% endif %}
+
+{% if magicrouter_publish_via_traefik and magicrouter_enable_gateway %}
+networks:
+  edge:
+    external: true
+    name: {{ magicrouter_traefik_network }}
+{% endif %}

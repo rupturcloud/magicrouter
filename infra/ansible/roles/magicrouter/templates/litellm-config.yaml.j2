@@ -1,0 +1,11 @@
+model_list:
+{% for model in magicrouter_models %}
+  - model_name: "{{ model.alias }}"
+    litellm_params:
+      model: "{{ model.target }}"
+      api_base: "{{ model.api_base | default((magicrouter_gateway_default_api_base if magicrouter_enable_ollama else magicrouter_ollama_api_base), true) }}"
+{% endfor %}
+
+litellm_settings:
+  master_key: "{{ magicrouter_master_key }}"
+  drop_params: true

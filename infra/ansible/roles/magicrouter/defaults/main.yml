@@ -1,0 +1,48 @@
+magicrouter_domain: magicrouter.ruptur.cloud
+magicrouter_enable_gateway: true
+magicrouter_enable_ollama: true
+magicrouter_publish_via_traefik: true
+
+magicrouter_image: docker.litellm.ai/berriai/litellm:main-latest
+magicrouter_container_name: ruptur-magicrouter
+magicrouter_port: 4000
+magicrouter_bind_host: 127.0.0.1
+
+magicrouter_ollama_image: ollama/ollama:latest
+magicrouter_ollama_container_name: ruptur-ollama
+magicrouter_ollama_port: 11434
+magicrouter_ollama_bind_host: 127.0.0.1
+magicrouter_ollama_host: 0.0.0.0
+magicrouter_ollama_service_name: ollama
+magicrouter_ollama_healthcheck_host: 127.0.0.1
+magicrouter_ollama_data_dir: /opt/ruptur/data/ollama
+magicrouter_ollama_models_to_pull: []
+magicrouter_ollama_env: {}
+
+magicrouter_compose_dir: /opt/ruptur/compose
+magicrouter_config_dir: /opt/ruptur/config/magicrouter
+magicrouter_data_dir: /opt/ruptur/data/magicrouter
+magicrouter_traefik_network: ruptur-edge
+magicrouter_ollama_api_base: http://host.docker.internal:11434
+magicrouter_gateway_default_api_base: "http://{{ magicrouter_ollama_service_name }}:{{ magicrouter_ollama_port }}"
+magicrouter_gateway_wait_host: 127.0.0.1
+magicrouter_health_path: /health
+magicrouter_extra_env: {}
+magicrouter_extra_volume_mounts: []
+
+# Segredo operacional: fornecer via extra-vars, inventário privado ou vault.
+magicrouter_master_key: ""
+
+magicrouter_models:
+  - alias: paperclip-lean
+    target: ollama/qwen3:8b
+  - alias: qwen3:8b
+    target: ollama/qwen3:8b
+  - alias: openclaw-lean
+    target: ollama/qwen2.5-coder:7b
+  - alias: qwen2.5-coder:7b
+    target: ollama/qwen2.5-coder:7b
+  - alias: fallback-light
+    target: ollama/qwen3:4b
+  - alias: qwen3:4b
+    target: ollama/qwen3:4b

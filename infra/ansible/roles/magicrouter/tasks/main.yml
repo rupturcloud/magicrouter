@@ -1,0 +1,78 @@
+- name: Validar segredo obrigatório do MagicRouter
+  ansible.builtin.assert:
+    that:
+      - magicrouter_master_key | length > 0
+    fail_msg: "Defina magicrouter_master_key fora do Git antes do deploy."
+  when: magicrouter_enable_gateway | bool
+
+- name: Garantir diretórios do MagicRouter
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ magicrouter_compose_dir }}"
+    - "{{ magicrouter_config_dir }}"
+    - "{{ magicrouter_data_dir }}"
+    - "{{ magicrouter_ollama_data_dir }}"
+
+- name: Renderizar config do LiteLLM
+  ansible.builtin.template:
+    src: litellm-config.yaml.j2
+    dest: "{{ magicrouter_config_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0640"
+  when: magicrouter_enable_gateway | bool
+
+- name: Renderizar compose do MagicRouter
+  ansible.builtin.template:
+    src: docker-compose.magicrouter.yml.j2
+    dest: "{{ magicrouter_compose_dir }}/magicrouter.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Subir MagicRouter
+  ansible.builtin.command:
+    cmd: docker compose -f {{ magicrouter_compose_dir }}/magicrouter.yml up -d
+  register: magicrouter_compose_up
+  changed_when: >
+    'Creating' in magicrouter_compose_up.stdout or
+    'Starting' in magicrouter_compose_up.stdout or
+    'Recreating' in magicrouter_compose_up.stdout or
+    'Pulling' in magicrouter_compose_up.stdout
+
+- name: Aguardar Ollama responder no host dedicado de IA
+  ansible.builtin.uri:
+    url: "http://{{ magicrouter_ollama_healthcheck_host }}:{{ magicrouter_ollama_port }}/api/tags"
+    method: GET
+    status_code: 200
+  register: magicrouter_ollama_health
+  retries: 30
+  delay: 5
+  until: magicrouter_ollama_health.status == 200
+  when: magicrouter_enable_ollama | bool
+
+- name: Pré-carregar modelos do Ollama definidos para o host dedicado
+  ansible.builtin.command:
+    cmd: docker exec {{ magicrouter_ollama_container_name }} ollama pull {{ item }}
+  register: magicrouter_ollama_pull
+  changed_when: "'pulling manifest' in magicrouter_ollama_pull.stdout or 'success' in magicrouter_ollama_pull.stdout"
+  loop: "{{ magicrouter_ollama_models_to_pull }}"
+  when:
+    - magicrouter_enable_ollama | bool
+    - magicrouter_ollama_models_to_pull | length > 0
+
+- name: Aguardar gateway OpenAI-compatible responder
+  ansible.builtin.uri:
+    url: "http://{{ magicrouter_gateway_wait_host }}:{{ magicrouter_port }}{{ magicrouter_health_path }}"
+    method: GET
+    status_code: 200
+  register: magicrouter_gateway_health
+  retries: 30
+  delay: 5
+  until: magicrouter_gateway_health.status == 200
+  when: magicrouter_enable_gateway | bool

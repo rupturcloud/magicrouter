@@ -1,120 +1,192 @@
-# Antigravity Agent Prompt — Discovery + Adaptive Deploy for MagicRouter
+# Prompt definitivo do agente Antigravity — discovery + deploy adaptativo do MagicRouter
 
-You are operating inside the `rupturcloud/magicrouter` repository.
+Você está operando no repositório `rupturcloud/magicrouter`.
 
-## Mission
-Implement MagicRouter on the existing GCP VPS environment in an adaptive way.
+## Missão única
+Entregar o MagicRouter como gateway soberano OpenAI-compatible em `magicrouter.ruptur.cloud`, usando o **ambiente real já existente** da Ruptur, sem inventar stack nova sem necessidade.
 
-This is not a greenfield deployment.
-Do not invent a new stack unless absolutely required.
-Do not assume docker-compose, nginx, traefik, caddy, pm2, or any specific runtime.
-Do not replace existing working Ruptur infrastructure by default.
+## Regra principal
+**Não se desvie para redesign, marketing site ou experimentação paralela.**
+Seu trabalho é:
+1. fazer discovery real do host e do ecossistema local relevante
+2. escolher o encaixe técnico mais próximo do padrão Ruptur já existente
+3. implementar o deploy adaptativo com Ansible
+4. deixar a operação documentada no repo
+5. commitar em pequenas etapas e enviar para o remoto
 
-Your job is to:
-1. discover the current VPS runtime and deployment shape
-2. identify how Ollama is currently exposed internally
-3. identify how Paperclip should consume the routed endpoint
-4. implement MagicRouter as an Ansible-first bounded module
-5. keep the host convergent with current Ruptur standards
-6. leave a clear operational trail in repo docs
+## Resposta objetiva que deve guiar sua implementação
+- Ollama sozinho não fornece gestão real de chaves por agente/app.
+- Se o objetivo é usar modelos locais em Paperclip e em projetos de dev com tokens separados, precisa existir um gateway na frente do Ollama.
+- O domínio público deve ser `https://magicrouter.ruptur.cloud`.
+- O endpoint-alvo deve ser `https://magicrouter.ruptur.cloud/v1`.
+- O Ollama deve continuar privado.
 
-## Core product truth
-MagicRouter exists so that local Ollama-backed models can be consumed through a stable OpenAI-compatible gateway with scoped keys/tokens for apps such as Paperclip and dev projects.
+## Direção técnica recomendada
+A recomendação inicial é:
+- **Traefik existente** na borda, se confirmado no host
+- **LiteLLM Proxy** como motor do gateway, se nada melhor já padronizado estiver em uso
+- **Ollama** como upstream local principal
+- fallback premium opcional depois
+- Ansible como source of truth do módulo
 
-## Direct answers that must guide implementation
-- Ollama itself does not natively provide per-agent API keys in the way OpenAI/OpenRouter do.
-- Therefore, if the goal is to issue tokens for Paperclip and dev projects, a gateway layer must exist in front of Ollama.
-- That gateway must expose OpenAI-compatible endpoints and support scoped API keys.
-- The implementation must remain local-first and route to the GCP-hosted Ollama runtime first.
+Se o discovery provar que outra escolha é mais aderente ao padrão atual do host, você pode adaptar — mas tem que justificar em `docs/runtime-decision.md`.
 
-## Recommended model strategy
-Use these defaults unless discovery proves a better already-installed option exists:
+## Fontes locais obrigatórias de contexto
+Antes de alterar qualquer coisa, leia e use como evidência:
 
-### local-first / coding
-- qwen coder 7b/14b/32b class
-- deepseek coder class
+### neste repo
+- `README.md`
+- `docs/PRD.md`
+- `docs/discovery-report.md`
+- `docs/deployment-plan.md`
+- `docs/runtime-decision.md`
+- `docs/paperclip-integration.md`
+- `docs/ops-runbook.md`
 
-### local-first / general chat
-- qwen class
-- gemma class
-- llama class when already installed
+### repositórios irmãos do workspace
+- `/Users/diego/dev/ruptur-cloud/ruptur-lab-main/infra/ansible/README.md`
+- `/Users/diego/dev/ruptur-cloud/ruptur-lab-main/infra/ansible/inventories/production/hosts.yml`
+- `/Users/diego/dev/ruptur-cloud/ruptur-lab-main/infra/ansible/inventories/production/group_vars/all.yml`
+- `/Users/diego/dev/ruptur-cloud/ruptur-lab-main/infra/ansible/playbooks/site.yml`
+- `/Users/diego/dev/ruptur-cloud/ruptur-lab-main/infra/ansible/roles/jarvis/defaults/main.yml`
+- `/Users/diego/dev/ruptur-cloud/ruptur-lab-main/infra/ansible/roles/jarvis/tasks/main.yml`
+- `/Users/diego/dev/ruptur-cloud/ruptur-main/state/infrastructure/ruptur_shipyard.md`
 
-### premium optional fallback
-- Claude class for strong reasoning and writing
-- GPT class for tool ecosystem compatibility
+## Baseline local já conhecido (a confirmar no host real)
+A partir do material local já inspecionado, parta destas hipóteses iniciais:
+- VM canônica provável: `ruptur-shipyard-01`
+- GCP projeto: `midyear-forest-493400-s3`
+- host provável em Debian 11
+- Traefik já é o proxy padrão do estaleiro
+- padrão de diretórios forte em `/opt/ruptur`
+- Compose é padrão importante no runtime do estaleiro
+- Jarvis já existe como módulo Ansible separado
+- inventário do estaleiro usa `~/.ssh/google_compute_engine`
 
-## Non-goals
-- Do not build a marketing site
-- Do not redesign the whole Ruptur SaaS
-- Do not force a brand new proxy stack if one already exists
-- Do not expose Ollama port 11434 publicly
-- Do not hardcode secrets in repo
+## O que você deve descobrir antes de escrever runtime
 
-## Discovery checklist
-Produce a discovery report before changing runtime wiring.
+### no host
+- sistema operacional e versão
+- serviços ativos
+- se Traefik está rodando
+- se Docker/Compose está rodando
+- se existe systemd específico para Ollama
+- como o Ollama está exposto internamente
+- bind real do Ollama
+- modelos já instalados
+- consumo atual de RAM/CPU relevante para sizing
+- redes/volumes/padrões já ativos
+- como TLS e DNS estão sendo tratados
 
-### host/runtime
-- detect OS
-- detect running services
-- detect process manager
-- detect existing reverse proxy
-- detect existing cert/TLS handling
-- detect container runtime if present
-- detect service layout under /opt, /srv, /var/lib, systemd, or current Ruptur paths
+### no ecossistema
+- onde o Paperclip vai consumir o endpoint
+- qual adapter do Paperclip é o melhor encaixe para consumir um provider soberano
+- onde ficam segredos e overrides operacionais
+- qual padrão de logs/runbooks a Ruptur já usa
 
-### ollama
-- confirm Ollama is installed and reachable
-- detect listening address/port
-- detect installed models
-- detect whether OpenAI-compatible endpoint is already used internally
-- detect local callers already using Ollama
+## Regras de implementação
+1. **Discovery primeiro.** Não suba nada antes de coletar evidência.
+2. **Reaproveite o proxy existente.** Se Traefik estiver ativo, não invente Nginx/Caddy.
+3. **Reaproveite o padrão de orquestração.** Se Compose estiver consolidado, não force systemd-only.
+4. **Não exponha a porta 11434 publicamente.**
+5. **Não coloque segredos no Git.**
+6. **Mantenha o módulo bounded.** Não tente refatorar o estaleiro inteiro.
+7. **Cada decisão importante deve ser explicada por escrito.**
+8. **Faça commits pequenos e significativos.**
+9. **Empurre para o remoto atual ao finalizar cada marco importante ou ao final da execução, conforme fizer sentido.**
 
-### Ruptur ecosystem fit
-- detect Paperclip runtime and existing config surface
-- detect Jarvis/HITL/AIOX integration points if present
-- detect current auth and secret patterns
-- detect current logs/observability path
+## Entregáveis obrigatórios no repo
+Você deve criar ou atualizar, durante a execução:
+- `docs/discovery-report.md`
+- `docs/deployment-plan.md`
+- `docs/runtime-decision.md`
+- `docs/paperclip-integration.md`
+- `docs/ops-runbook.md`
 
-## Required outputs in repo
-Create or update these as you work:
-- docs/discovery-report.md
-- docs/deployment-plan.md
-- docs/runtime-decision.md
-- docs/paperclip-integration.md
-- docs/ops-runbook.md
+E também os artefatos de implementação que forem necessários dentro de:
+- `infra/ansible/`
+- `services/`
 
-## Deployment intent
-Implement an adaptive gateway module that can:
-- sit in front of Ollama
-- expose `/v1/models` and `/v1/chat/completions`
-- issue scoped tokens/keys for apps
-- allow future routing/fallback expansion
-- support a small operator web mirror
+## Contrato do deploy
+O resultado mínimo aceitável é:
+- domínio `magicrouter.ruptur.cloud` publicado pela borda existente
+- health endpoint funcional
+- `/v1/models` funcional
+- `/v1/chat/completions` funcional
+- pelo menos uma chave escopada para `paperclip`
+- pelo menos uma chave escopada para `dev`
+- Paperclip documentado com base URL e segredo corretos
+- Ollama privado
 
-## Adaptive runtime rules
-1. Reuse existing proxy if present.
-2. Reuse existing service orchestration pattern if present.
-3. Use Ansible to converge configuration.
-4. If multiple viable runtime choices exist, document them and pick the one closest to the current Ruptur standard already active on the host.
-5. Every decision must be justified in `docs/runtime-decision.md`.
+## Forma esperada do uso pelo Paperclip
+Separe claramente duas coisas:
 
-## Paperclip target shape
-Paperclip must be able to use:
-- Base URL: `https://magicrouter.ruptur.cloud/v1`
-- API key: generated/scoped key from the gateway layer
+### 1. credenciais do controle do Paperclip
+Exemplos:
+- `PAPERCLIP_API_URL`
+- `PAPERCLIP_API_KEY`
 
-## Acceptance criteria
-- local models behind the gateway are callable through OpenAI-compatible endpoints
-- scoped keys exist for Paperclip and dev projects
-- Ollama remains private
-- deployment fits existing VPS runtime rather than fighting it
-- ansible artifacts are the source of truth
-- repo documents exactly how to operate the module
+### 2. credenciais do provedor de modelo soberano
+Exemplos alvo:
+- `OPENAI_BASE_URL=https://magicrouter.ruptur.cloud/v1`
+- `OPENAI_API_KEY=<chave-escopada-do-magicrouter>`
 
-## Execution style
-- be surgical
-- preserve working infra
-- prefer integration over replacement
-- write down assumptions
-- show evidence for runtime choices
-- keep the module bounded and operational
+Não misture as duas camadas.
+
+## Modelos padrão recomendados para começar
+Se o host suportar, use este baseline inicial:
+
+### coding / agentes de desenvolvimento
+- `qwen3-coder:30b`
+- `devstral:24b`
+- `gpt-oss:20b`
+
+### geral / coordenação / PM
+- `qwen3:30b`
+- `gemma3:27b`
+
+### vision opcional
+- `qwen3-vl:8b`
+
+Se discovery provar limitação de memória, desça de forma explícita e documentada.
+
+## Ordem de execução obrigatória
+
+### etapa 1 — discovery local e remoto
+- ler docs locais
+- inspecionar ansible/padrões Ruptur
+- acessar host real e coletar evidência
+- preencher `docs/discovery-report.md`
+
+### etapa 2 — decisão de runtime
+- listar opções viáveis
+- escolher a mais aderente ao padrão real
+- preencher `docs/runtime-decision.md`
+
+### etapa 3 — implementação do módulo
+- criar/ajustar role, templates, vars, exemplos e serviço(s)
+- manter compatibilidade com o baseline da Ruptur
+- preencher `docs/deployment-plan.md`
+
+### etapa 4 — integração Paperclip
+- documentar base URL, chaves e forma de consumo
+- preencher `docs/paperclip-integration.md`
+
+### etapa 5 — operação
+- documentar smoke tests, logs, rollback e troubleshooting
+- preencher `docs/ops-runbook.md`
+
+### etapa 6 — validação final
+- rodar checks
+- garantir health
+- garantir rota funcional
+- commitar
+- push para o remoto
+
+## Critério de sucesso
+No final, Diego precisa conseguir:
+1. abrir este repo no Antigravity e ver o trilho completo
+2. aplicar o módulo com seu Ansible
+3. emitir tokens separados para Paperclip e dev
+4. consumir modelos locais via endpoint único OpenAI-compatible
+5. operar o gateway sem expor o Ollama
